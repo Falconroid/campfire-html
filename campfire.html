@@ -2915,13 +2915,14 @@
             const genTimer = setInterval(() => { genSecs++; btn.textContent = `⏳ HTML 生成中… ${genSecs}s`; }, 1000);
             try {
                 const c = collectSessionContent(session);
-                const input = `标题: ${c.title}\n分析指标: ${c.metrics}\n\n原始问题:\n${c.questions.join('\n---\n')}\n\n最终结论 (最后一轮，置信度最高):\n${c.syntheses[c.syntheses.length - 1] || c.syntheses.join('\n\n')}`;
+                const input = `标题: ${c.title}\n日期: ${c.date}\n分析指标: ${c.metrics}\n\n原始问题 (按时间顺序):\n${c.questions.join('\n---\n')}\n\n各轮综合结论 (后面的结论经过更多轮辩论，置信度更高):\n${c.syntheses.join('\n\n===\n\n')}`;
                 const html = await callModelSync(writerModel,
-                    `将以下分析结论转化为一个专业的演示 HTML 页面。
+                    `将以下多轮分析对话转化为一个专业的演示 HTML 页面。
 
 要求：
 - 完整独立的 HTML 文件，内联 CSS，不使用任何外部 CDN 或依赖
 - 深色专业主题（#0a0a0a 背景），适合投屏和屏幕分享
+- 如有多个问题/多轮结论，按议题分区展示，合并重复观点，突出演进和分歧收敛
 - 清晰的视觉层次：大标题 → 核心结论（醒目）→ 关键洞见（卡片式）→ 遗留分歧（如有）
 - 每个要点简洁有力，像高管汇报幻灯片
 - 响应式布局，桌面和平板均可用
