@@ -2989,29 +2989,33 @@
                 // Cache immediately — before vault write so button state is correct even if save fails
                 session._lastPresentHash = sourceHash;
                 session._lastPresentHtml = html;
-                // Save as HTML with auto-versioning
-                const baseFilename = makeExportFilename(session, '演示', 'html');
-                const dir = await getExportsDir();
-                let savedFilename = baseFilename;
-                if (dir) {
-                    const base = baseFilename.replace(/\.html$/, '');
-                    const existing = [];
-                    for await (const entry of dir.values()) {
-                        if (entry.kind === 'file' && entry.name.startsWith(base) && entry.name.endsWith('.html')) existing.push(entry.name);
-                    }
-                    if (existing.length > 0) {
-                        let version = 2;
-                        for (const name of existing) {
-                            const vMatch = name.match(/_v(\d+)\.html$/);
-                            if (vMatch) version = Math.max(version, parseInt(vMatch[1]) + 1);
+                // Save as HTML with auto-versioning (separate try so LLM result is never lost)
+                let savedFilename = null;
+                try {
+                    const baseFilename = makeExportFilename(session, '演示', 'html');
+                    const dir = await getExportsDir();
+                    if (dir) {
+                        const base = baseFilename.replace(/\.html$/, '');
+                        const existing = [];
+                        for await (const entry of dir.values()) {
+                            if (entry.kind === 'file' && entry.name.startsWith(base) && entry.name.endsWith('.html')) existing.push(entry.name);
                         }
-                        savedFilename = `${base}_v${version}.html`;
+                        let finalName = baseFilename;
+                        if (existing.length > 0) {
+                            let version = 2;
+                            for (const name of existing) {
+                                const vMatch = name.match(/_v(\d+)\.html$/);
+                                if (vMatch) version = Math.max(version, parseInt(vMatch[1]) + 1);
+                            }
+                            finalName = `${base}_v${version}.html`;
+                        }
+                        const fh = await dir.getFileHandle(finalName, { create: true });
+                        const w = await fh.createWritable(); await w.write(html); await w.close();
+                        savedFilename = finalName;
                     }
-                    const fh = await dir.getFileHandle(savedFilename, { create: true });
-                    const w = await fh.createWritable(); await w.write(html); await w.close();
-                }
+                } catch(saveErr) { showToast('⚠️ 生成成功但保存失败: ' + saveErr.message, 4000); }
                 openHtmlInTab(html);
-                showToast(dir ? `HTML 已保存到 exports/${savedFilename}，已在新标签打开` : 'HTML 演示已在新标签打开');
+                showToast(savedFilename ? `HTML 已保存到 exports/${savedFilename}，已在新标签打开` : '档案库未连接，HTML 已在新标签打开（未保存）');
             } catch(e) { showToast('生成失败: ' + e.message, 3000); }
             finally {
                 clearInterval(genTimer);
