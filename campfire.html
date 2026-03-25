@@ -2921,13 +2921,13 @@
             finally { btn.disabled = false; btn.textContent = '📋 结构化归档'; }
         };
 
-        document.getElementById('exportPresentBtn').onclick = async () => {
+        document.getElementById('exportPresentBtn').onclick = async (e) => {
             const session = getActiveSession();
             if (!session?.data?.last_synthesis) return showToast('暂无分析结论');
-            // Dedup: skip LLM if source material unchanged since last export
+            // Dedup: skip LLM if source material unchanged since last export (Shift+Click to force)
             const c = collectSessionContent(session);
             const sourceHash = hashStr(c.syntheses.join('|') + c.questions.join('|'));
-            if (session._lastPresentHash === sourceHash) { showToast('内容未更新，已跳过重新生成'); return; }
+            if (!e.shiftKey && session._lastPresentHash === sourceHash) { showToast('内容未更新，已跳过重新生成 (Shift+点击可强制重新生成)'); return; }
             const writerModel = config.models.writer || 'claude-sonnet-4-6';
             const btn = document.getElementById('exportPresentBtn');
             btn.disabled = true;
@@ -2955,16 +2955,19 @@
                 if (dir) {
                     const fh = await dir.getFileHandle(filename, { create: true });
                     const w = await fh.createWritable(); await w.write(html); await w.close();
-                    showToast(`HTML 已导出 exports/${filename}，正在浏览器中打开…`);
-                } else {
-                    showToast('HTML 演示生成完成，正在浏览器中打开…');
                 }
-                // Preview in new tab — revoke URL after load to avoid memory leak
+                // Open in new tab — use <a> click to bypass popup blockers
                 const blob = new Blob([html], { type: 'text/html' });
                 const blobUrl = URL.createObjectURL(blob);
-                const win = window.open(blobUrl, '_blank');
-                if (win) win.addEventListener('load', () => setTimeout(() => URL.revokeObjectURL(blobUrl), 1000));
-                else URL.revokeObjectURL(blobUrl);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+                showToast(dir ? `HTML 已保存到 exports/${filename}，已在新标签打开` : 'HTML 演示已在新标签打开');
                 session._lastPresentHash = sourceHash;
             } catch(e) { showToast('生成失败: ' + e.message, 3000); }
             finally { clearInterval(genTimer); btn.disabled = false; btn.textContent = '🎬 生成 HTML 演示'; }
