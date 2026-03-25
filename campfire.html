@@ -756,13 +756,14 @@
             if (isSticky || rawText.length < 100) container.scrollTop = container.scrollHeight;
         }
 
-        function appendUserMessageDOM(session, text) {
+        function appendUserMessageDOM(session, text, runId) {
             const container = session.renderContainerEl;
             const wMsg = container.querySelector('.welcome-msg');
             if (wMsg) wMsg.remove();
             const msgId = `umsg_${session.id}_${Date.now()}`;
             _logPinTextStore.set(msgId, text);
-            const msgHtml = `<div class="user-msg-block mb-6 ml-12" data-session-id="${session.id}"><div class="flex justify-between items-center mb-1"><span class="text-orange-500 text-[10px] font-bold uppercase tracking-widest">>>> 提问</span><button class="edit-question-btn text-[10px] text-gray-600 hover:text-orange-400 transition" data-msg-id="${msgId}">✏️ 编辑重跑</button></div><div class="bg-gray-900 border border-gray-800 p-4 rounded-lg rounded-tr-none text-gray-300 text-sm whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
+            const runAttr = runId ? ` data-run-id="${runId}"` : '';
+            const msgHtml = `<div class="user-msg-block mb-6 ml-12" data-session-id="${session.id}"${runAttr}><div class="flex justify-between items-center mb-1"><span class="text-orange-500 text-[10px] font-bold uppercase tracking-widest">>>> 提问</span><button class="edit-question-btn text-[10px] text-gray-600 hover:text-orange-400 transition" data-msg-id="${msgId}"${runAttr}>✏️ 编辑重跑</button></div><div class="bg-gray-900 border border-gray-800 p-4 rounded-lg rounded-tr-none text-gray-300 text-sm whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
             container.innerHTML += msgHtml;
             container.scrollTop = container.scrollHeight;
         }
@@ -1279,8 +1280,9 @@
                 session.data.timestamp = new Date().toISOString();
                 session.data.title = session.title;
 
-                session.data.blocks.push({ type: 'user', text: userInput });
-                appendUserMessageDOM(session, userInput);
+                session.data.blocks.push({ type: 'user', text: userInput, runId });
+                appendToLogWithSmartScroll(session, `<div id="runlog_${session.id}_${runId}"></div>`);
+                appendUserMessageDOM(session, userInput, runId);
                 startSessionTimer(session);
 
                 // Web search (optional) — α and β each search independently in campfire mode
@@ -2499,12 +2501,44 @@
             // Edit question & re-run
             if (e.target.classList.contains('edit-question-btn')) {
                 const msgId = e.target.getAttribute('data-msg-id');
+                const runId = e.target.getAttribute('data-run-id');
                 const original = _logPinTextStore.get(msgId) || '';
                 if (!original) return;
+
+                // Find the session this message belongs to
+                const msgBlock = e.target.closest('.user-msg-block');
+                const sessionId = msgBlock?.getAttribute('data-session-id');
+                const session = sessionId ? sessionManager.sessions.get(sessionId) : getActiveSession();
+                if (!session) return;
+
+                // 1. Rollback right panel: remove this user-msg-block and all after it
+                if (msgBlock) {
+                    let el = msgBlock.nextElementSibling;
+                    while (el) { const nx = el.nextElementSibling; el.remove(); el = nx; }
+                    msgBlock.remove();
+                }
+
+                // 2. Rollback crucible log: remove run marker and all after it
+                if (runId) {
+                    const marker = document.getElementById(`runlog_${session.id}_${runId}`);
+                    if (marker) {
+                        let el = marker.nextElementSibling;
+                        while (el) { const nx = el.nextElementSibling; el.remove(); el = nx; }
+                        marker.remove();
+                    }
+                }
+
+                // 3. Rollback session.data.blocks to before this run
+                if (runId) {
+                    const idx = session.data.blocks.findIndex(b => b.runId === runId && b.type === 'user');
+                    if (idx >= 0) session.data.blocks = session.data.blocks.slice(0, idx);
+                }
+
+                // 4. Fill input and focus
                 const inp = document.getElementById('userInput');
                 inp.value = original;
                 inp.focus();
-                showToast('已填入原始问题，修改后按 Enter 重新执行');
+                showToast('已回滚到该问题，修改后按 Enter 重新执行');
                 return;
             }
             // Follow-up button — focus input
