@@ -1,2 +1,6 @@
 .claude/
 campfire_dji_*
+campfire_openchat/
+campfire_proxy.py
+.campfire_oc_token
+hint-report/
